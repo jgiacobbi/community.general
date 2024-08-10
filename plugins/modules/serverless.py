@@ -22,6 +22,11 @@ attributes:
   diff_mode:
     support: none
 options:
+  config:
+    description:
+      - Override the default yaml file name of C(serverless.yml), equivalent to serverless C(--config) option.
+    type: str
+    default: serverless.yml
   state:
     description:
       - Goal state of given stage/project.
@@ -135,20 +140,22 @@ from ansible.module_utils.basic import AnsibleModule
 
 def read_serverless_config(module):
     path = module.params.get('service_path')
-    full_path = os.path.join(path, 'serverless.yml')
+    file = module.params.get('config')
+    full_path = os.path.join(path, file)
 
     try:
         with open(full_path) as sls_config:
             config = yaml.safe_load(sls_config.read())
             return config
     except IOError as e:
-        module.fail_json(msg="Could not open serverless.yml in {0}. err: {1}".format(full_path, str(e)))
+        module.fail_json(msg="Could not open {0} in {1}. err: {2}".format(file, path, str(e)))
 
 
 def get_service_name(module, stage):
     config = read_serverless_config(module)
+    file = module.params.get('config')
     if config.get('service') is None:
-        module.fail_json(msg="Could not read `service` key from serverless.yml file")
+        module.fail_json(msg="Could not read `service` key from {0} file".format(file))
 
     if stage:
         return "{0}-{1}".format(config['service'], stage)
@@ -157,9 +164,12 @@ def get_service_name(module, stage):
 
 
 def main():
+    default_file = 'serverless.yml'
+
     module = AnsibleModule(
         argument_spec=dict(
             service_path=dict(type='path', required=True),
+            config=dict(type='str', default=default_file),
             state=dict(type='str', default='present', choices=['absent', 'present']),
             region=dict(type='str', default=''),
             stage=dict(type='str', default=''),
@@ -174,6 +184,7 @@ def main():
         module.fail_json(msg='yaml is required for this module')
 
     service_path = module.params.get('service_path')
+    service_file = module.params.get('config')
     state = module.params.get('state')
     region = module.params.get('region')
     stage = module.params.get('stage')
@@ -193,6 +204,9 @@ def main():
         command += 'remove '
     else:
         module.fail_json(msg="State must either be 'present' or 'absent'. Received: {0}".format(state))
+
+    if service_file != default_file:
+        command += '--config {0} '.format(service_file)
 
     if state == 'present':
         if not deploy:
